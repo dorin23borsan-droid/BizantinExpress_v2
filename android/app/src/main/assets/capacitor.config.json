@@ -1,0 +1,8 @@
+{
+	"appId": "com.bizantinexpress.app",
+	"appName": "BizantinExpress",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	}
+}

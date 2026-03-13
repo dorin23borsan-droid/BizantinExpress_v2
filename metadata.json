@@ -1,0 +1,7 @@
+{
+  "name": "Remix: BizantinExpress",
+  "description": "Servizio di consegne veloci per i negozianti di Ravenna, con gestione runner e pannello admin.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

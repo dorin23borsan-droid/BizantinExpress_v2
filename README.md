@@ -1,11 +1,29 @@
-<div align="center">
+# Bizantin Express 🚚
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Sistema di gestione consegne ultra-veloce per negozianti e runner. Sviluppato con React, Express, SQLite e Capacitor.
 
-  <h1>Built with AI Studio</h2>
+## 📱 Caratteristiche
+- **Dashboard Negoziante**: Creazione ordini e calcolo distanze.
+- **App Runner**: Ricezione ordini in tempo reale tramite Socket.io.
+- **Mappe Live**: Integrazione con Leaflet per la visualizzazione delle consegne.
+- **Notifiche**: Aggiornamenti istantanei sullo stato degli ordini.
+- **Mobile Ready**: Pronto per essere compilato come APK Android.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## 🛠 Tech Stack
+- **Frontend**: React, Tailwind CSS, Lucide React, Motion.
+- **Backend**: Node.js, Express, Socket.io.
+- **Database**: SQLite (Better-SQLite3).
+- **Mobile**: Capacitor.js.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## 🚀 Installazione Locale
+1. Clona il repository.
+2. Installa le dipendenze: `npm install`.
+3. Avvia in modalità sviluppo: `npm run dev`.
 
-</div>
+## 📦 Compilazione Android
+1. Genera la build statica: `npm run static-build`.
+2. Sincronizza Capacitor: `npm run cap-sync`.
+3. Apri in Android Studio: `npx cap open android`.
+
+## ☁️ Deploy Cloud
+Il server è configurato per funzionare su piattaforme come Railway o Render. Assicurati di impostare le variabili d'ambiente `JWT_SECRET` e `PORT`.

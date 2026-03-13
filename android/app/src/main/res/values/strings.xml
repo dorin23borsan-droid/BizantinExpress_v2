@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BizantinExpress</string>
+    <string name="title_activity_main">BizantinExpress</string>
+    <string name="package_name">com.bizantinexpress.app</string>
+    <string name="custom_url_scheme">com.bizantinexpress.app</string>
+</resources>

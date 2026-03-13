@@ -1,0 +1,18 @@
+# Dipendenze
+node_modules/
+dist/
+.env
+
+# Database
+*.db
+*.db-journal
+
+# Capacitor & Android
+android/app/build/
+android/.gradle/
+android/local.properties
+android/app/src/main/assets/public/
+
+# OS
+.DS_Store
+Thumbs.db
