@@ -18,6 +18,7 @@ import {
   Info,
   Zap,
   Map as MapIcon,
+  Camera,
   Maximize2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -48,6 +49,17 @@ interface Order {
   price: number;
   status: OrderStatus;
   runner_id?: string;
+  delivery_photo?: string;
+  delivery_slot?: string;
+  created_at: string;
+}
+
+interface Message {
+  id: number;
+  user_id: number;
+  username: string;
+  role: string;
+  content: string;
   created_at: string;
 }
 
@@ -99,7 +111,9 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('bx_token'));
   const [orders, setOrders] = useState<Order[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const [notifications, setNotifications] = useState<string[]>([]);
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'error' | 'success' }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -287,6 +301,25 @@ export default function App() {
         newSocket.on('order:updated', (order: Order) => {
           setOrders(prev => prev.map(o => o.id === order.id ? order : o));
         });
+
+        newSocket.on('receive_message', (message: Message) => {
+          setMessages(prev => {
+            if (prev.some(m => m.id === message.id)) return prev;
+            return [...prev, message];
+          });
+          if (!chatOpen) {
+            addNotification(`Nuovo messaggio da ${message.username}`);
+          }
+        });
+
+        // Fetch initial messages
+        const msgRes = await fetch(`${API_BASE_URL}/api/messages`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (msgRes.ok) {
+          const msgData = await msgRes.json();
+          setMessages(msgData);
+        }
       }
       setLoading(false);
     };
@@ -329,6 +362,16 @@ export default function App() {
       setOrders(prev => prev.map(o => o.id === id ? updatedOrder : o));
       addToast(`Stato ordine aggiornato: ${status}`, "success");
     }
+  };
+
+  const sendMessage = (content: string) => {
+    if (!socket || !content.trim() || !user) return;
+    socket.emit('send_message', {
+      user_id: user.id,
+      username: user.name,
+      role: user.role,
+      content: content.trim()
+    });
   };
 
   const handleDeleteOrder = async (id: number) => {
@@ -376,7 +419,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-[#FDFCF8] overflow-hidden">
+    <div className="h-screen flex flex-col bg-[#FDFCF8] overflow-hidden">
       {/* App Bar */}
       <header className="bg-white/90 backdrop-blur-xl border-b border-slate-100 px-5 py-4 flex items-center justify-between z-50 pt-safe">
         <div className="flex items-center gap-3">
@@ -441,7 +484,7 @@ export default function App() {
       </div>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-safe pb-32 px-4">
+      <main className="flex-1 overflow-y-auto overflow-x-hidden pb-32 px-4">
         <div className="max-w-2xl mx-auto pt-6">
           <div className="mb-6 flex items-center gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm active:bg-slate-50 transition-colors">
             <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-700 shrink-0">
@@ -463,7 +506,7 @@ export default function App() {
                 <ShieldCheck size={20} />
               </button>
               <span className="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full uppercase tracking-widest">
-                {user.role}
+                {user.role === 'admin' ? 'Responsabile' : user.role === 'merchant' ? 'Negozio' : 'Runner'}
               </span>
             </div>
           </div>
@@ -473,10 +516,20 @@ export default function App() {
               <MerchantView orders={orders} onCreateOrder={handleCreateOrder} view={view} />
             )}
             {user.role === 'runner' && (
-              <RunnerView orders={orders} onUpdateStatus={handleUpdateStatus} runnerId={user.id} view={view} />
+              <RunnerView orders={orders} onUpdateStatus={handleUpdateStatus} runnerId={user.id} view={view} onUpdateStatusWithPhoto={(id, status, photo) => {
+                authFetch(`/api/orders/${id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status, delivery_photo: photo }),
+                }).then(updatedOrder => {
+                  if (updatedOrder) {
+                    setOrders(prev => prev.map(o => o.id === id ? updatedOrder : o));
+                    addToast(`Consegna completata con foto!`, "success");
+                  }
+                });
+              }} />
             )}
             {user.role === 'admin' && (
-              <AdminView orders={orders} onUpdateStatus={handleUpdateStatus} onDeleteOrder={handleDeleteOrder} />
+              <AdminView orders={orders} onUpdateStatus={handleUpdateStatus} onDeleteOrder={handleDeleteOrder} view={view} />
             )}
           </AnimatePresence>
         </div>
@@ -496,8 +549,136 @@ export default function App() {
           icon={History} 
           label="Storico" 
         />
+        <div className="relative">
+          <button 
+            onClick={() => setChatOpen(true)}
+            className={cn(
+              "flex flex-col items-center gap-1 px-4 py-1 rounded-xl transition-all active:scale-90",
+              chatOpen ? "text-amber-600" : "text-slate-400"
+            )}
+          >
+            <Bell size={20} />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Chat</span>
+            {messages.length > 0 && (
+              <span className="absolute top-0 right-2 w-2 h-2 bg-amber-500 rounded-full border-2 border-white" />
+            )}
+          </button>
+        </div>
       </nav>
+
+      {/* Chat Window */}
+      <AnimatePresence>
+        {chatOpen && (
+          <ChatWindow 
+            messages={messages} 
+            onClose={() => setChatOpen(false)} 
+            onSend={sendMessage}
+            currentUser={user}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+}
+
+// --- Chat Window Component ---
+function ChatWindow({ messages, onClose, onSend, currentUser }: { 
+  messages: Message[], 
+  onClose: () => void, 
+  onSend: (c: string) => void,
+  currentUser: any
+}) {
+  const [text, setText] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (text.trim()) {
+      onSend(text);
+      setText('');
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 100 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 100 }}
+      className="fixed inset-0 z-[200] bg-white flex flex-col pt-safe"
+    >
+      <header className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white/90 backdrop-blur-xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-700">
+            <Bell size={20} />
+          </div>
+          <div>
+            <h2 className="text-lg font-black text-slate-800 tracking-tight">Chat Assistenza</h2>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sempre online</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 active:scale-90 transition-all">
+          <LogOut size={20} className="rotate-180" />
+        </button>
+      </header>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4 bg-slate-50/50">
+        {messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center p-10 space-y-4">
+            <div className="w-16 h-16 bg-white rounded-3xl shadow-sm flex items-center justify-center text-slate-300">
+              <Bell size={32} />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800">Nessun messaggio</p>
+              <p className="text-xs text-slate-400 font-medium">Inizia una conversazione con il responsabile</p>
+            </div>
+          </div>
+        ) : (
+          messages.map((msg, idx) => {
+            const isMe = msg.user_id === currentUser.id;
+            return (
+              <div key={msg.id || idx} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+                <div className={cn(
+                  "max-w-[80%] px-4 py-3 rounded-2xl shadow-sm",
+                  isMe ? "bg-amber-600 text-white rounded-tr-none" : "bg-white text-slate-800 rounded-tl-none border border-slate-100"
+                )}>
+                  {!isMe && (
+                    <p className="text-[9px] font-black uppercase tracking-widest mb-1 opacity-50">
+                      {msg.username} • {msg.role === 'admin' ? 'Responsabile' : msg.role === 'merchant' ? 'Negozio' : 'Runner'}
+                    </p>
+                  )}
+                  <p className="text-sm font-medium leading-relaxed">{msg.content}</p>
+                </div>
+                <p className="text-[8px] font-bold text-slate-300 uppercase tracking-widest mt-1 px-1">
+                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-4 bg-white border-t border-slate-100 flex gap-2 pb-safe">
+        <input 
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Scrivi un messaggio..."
+          className="flex-1 bg-slate-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-amber-500 font-medium text-sm"
+        />
+        <button 
+          type="submit"
+          disabled={!text.trim()}
+          className="bg-amber-600 text-white p-3 rounded-xl shadow-lg shadow-amber-200 disabled:opacity-50 active:scale-95 transition-all"
+        >
+          <Plus size={20} className="rotate-45" />
+        </button>
+      </form>
+    </motion.div>
   );
 }
 
@@ -712,8 +893,28 @@ function MerchantView({ orders, onCreateOrder, view }: { orders: Order[], onCrea
     type: 'city' as OrderType,
     distance: 0,
     lat: 0,
-    lng: 0
+    lng: 0,
+    delivery_slot: '08:00'
   });
+
+  const slots = useMemo(() => {
+    const s = [];
+    // 08:00 - 13:00
+    for (let h = 8; h <= 13; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        if (h === 13 && m > 0) break;
+        s.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+      }
+    }
+    // 15:00 - 19:00
+    for (let h = 15; h <= 19; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        if (h === 19 && m > 0) break;
+        s.push(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+      }
+    }
+    return s;
+  }, []);
 
   const RAVENNA_CENTER: [number, number] = [44.4184, 12.2035];
   const CITY_RADIUS_KM = 3.5;
@@ -790,7 +991,8 @@ function MerchantView({ orders, onCreateOrder, view }: { orders: Order[], onCrea
       type: 'city', 
       distance: 0,
       lat: 0,
-      lng: 0
+      lng: 0,
+      delivery_slot: '08:00'
     });
   };
 
@@ -939,6 +1141,19 @@ function MerchantView({ orders, onCreateOrder, view }: { orders: Order[], onCrea
                   <span className="text-2xl font-black text-amber-600">€{calculatePrice()}</span>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Orario Consegna (Lun-Sab)</label>
+                  <select 
+                    className="w-full bg-slate-50 border-none rounded-xl py-3 px-4 focus:ring-2 focus:ring-amber-500 font-bold text-slate-700"
+                    value={formData.delivery_slot}
+                    onChange={e => setFormData({ ...formData, delivery_slot: e.target.value })}
+                  >
+                    {slots.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <button 
                   type="submit"
                   className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:bg-slate-800 transition-all active:scale-95"
@@ -980,10 +1195,26 @@ function MerchantView({ orders, onCreateOrder, view }: { orders: Order[], onCrea
   );
 }
 
-function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[], onUpdateStatus: (id: number, status: OrderStatus) => void, runnerId: any, view: 'active' | 'history' }) {
+function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateStatusWithPhoto }: { orders: Order[], onUpdateStatus: (id: number, status: OrderStatus) => void, runnerId: any, view: 'active' | 'history', onUpdateStatusWithPhoto: (id: number, status: OrderStatus, photo: string) => void }) {
   const availableOrders = orders.filter(o => o.status === 'pending');
   const myActiveOrders = orders.filter(o => o.status === 'assigned' && String(o.runner_id) === String(runnerId));
   const myHistoryOrders = orders.filter(o => o.status === 'completed' && String(o.runner_id) === String(runnerId));
+
+  const [capturingPhotoFor, setCapturingPhotoFor] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>, orderId: number) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        onUpdateStatusWithPhoto(orderId, 'completed', base64String);
+        setCapturingPhotoFor(null);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <motion.div 
@@ -992,6 +1223,15 @@ function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[
       exit={{ opacity: 0, y: -20 }}
       className="space-y-8"
     >
+      <input 
+        type="file" 
+        accept="image/*" 
+        capture="environment" 
+        className="hidden" 
+        ref={fileInputRef}
+        onChange={(e) => capturingPhotoFor && handlePhotoCapture(e, capturingPhotoFor)}
+      />
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-800">
@@ -1012,13 +1252,18 @@ function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[
                 <OrderCard 
                   key={order.id} 
                   order={order} 
+                  hidePrice
+                  showNavigation
                   actions={
                     <button 
-                      onClick={() => onUpdateStatus(order.id, 'completed')}
+                      onClick={() => {
+                        setCapturingPhotoFor(order.id);
+                        fileInputRef.current?.click();
+                      }}
                       className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-100"
                     >
-                      <CheckCircle2 size={18} />
-                      CONSEGNA EFFETTUATA
+                      <Camera size={18} />
+                      FOTO E CONSEGNA
                     </button>
                   }
                 />
@@ -1038,6 +1283,8 @@ function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[
                 <OrderCard 
                   key={order.id} 
                   order={order} 
+                  hidePrice
+                  showNavigation
                   actions={
                     <button 
                       onClick={() => onUpdateStatus(order.id, 'assigned')}
@@ -1061,7 +1308,7 @@ function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[
             </div>
           ) : (
             myHistoryOrders.map(order => (
-              <OrderCard key={order.id} order={order} />
+              <OrderCard key={order.id} order={order} hidePrice />
             ))
           )}
         </div>
@@ -1070,13 +1317,16 @@ function RunnerView({ orders, onUpdateStatus, runnerId, view }: { orders: Order[
   );
 }
 
-function AdminView({ orders, onUpdateStatus, onDeleteOrder }: { orders: Order[], onUpdateStatus: (id: number, status: OrderStatus) => void, onDeleteOrder: (id: number) => void }) {
+function AdminView({ orders, onUpdateStatus, onDeleteOrder, view }: { orders: Order[], onUpdateStatus: (id: number, status: OrderStatus) => void, onDeleteOrder: (id: number) => void, view: 'active' | 'history' }) {
   const stats = useMemo(() => ({
     total: orders.length,
-    pending: orders.filter(o => o.status === 'pending').length,
+    pending: orders.filter(o => o.status !== 'completed').length,
     completed: orders.filter(o => o.status === 'completed').length,
     revenue: orders.reduce((acc, o) => acc + o.price, 0)
   }), [orders]);
+
+  // L'Admin vede sempre tutto
+  const allOrders = useMemo(() => [...orders].sort((a, b) => b.id - a.id), [orders]);
 
   return (
     <motion.div 
@@ -1086,8 +1336,8 @@ function AdminView({ orders, onUpdateStatus, onDeleteOrder }: { orders: Order[],
       className="space-y-8"
     >
       <div>
-        <h2 className="text-2xl font-black text-slate-800">Pannello Admin</h2>
-        <p className="text-sm text-slate-500 font-medium">Monitoraggio in tempo reale</p>
+        <h2 className="text-2xl font-black text-slate-800">Pannello di Controllo</h2>
+        <p className="text-sm text-slate-500 font-medium">Visione globale di tutte le attività</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -1107,30 +1357,38 @@ function AdminView({ orders, onUpdateStatus, onDeleteOrder }: { orders: Order[],
 
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Tutti gli ordini</h3>
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Tutti gli ordini nel sistema</h3>
           <History size={16} className="text-slate-400" />
         </div>
-        {orders.map(order => (
-          <OrderCard 
-            key={order.id} 
-            order={order} 
-            isAdmin 
-            actions={
-              <button 
-                onClick={() => onDeleteOrder(order.id)}
-                className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
-              >
-                ELIMINA ORDINE
-              </button>
-            }
-          />
-        ))}
+        {allOrders.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-200">
+            <Package size={48} className="mx-auto text-slate-200 mb-4" />
+            <p className="text-slate-400 font-medium">Nessun ordine presente</p>
+          </div>
+        ) : (
+          allOrders.map(order => (
+            <OrderCard 
+              key={order.id} 
+              order={order} 
+              isAdmin 
+              showNavigation
+              actions={
+                <button 
+                  onClick={() => onDeleteOrder(order.id)}
+                  className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-100 transition-colors"
+                >
+                  ELIMINA ORDINE
+                </button>
+              }
+            />
+          ))
+        )}
       </div>
     </motion.div>
   );
 }
 
-const OrderCard = React.memo(({ order, actions, isAdmin }: { order: Order, actions?: React.ReactNode, isAdmin?: boolean, key?: React.Key }) => {
+const OrderCard = React.memo(({ order, actions, isAdmin, hidePrice, showNavigation }: { order: Order, actions?: React.ReactNode, isAdmin?: boolean, hidePrice?: boolean, showNavigation?: boolean, key?: React.Key }) => {
   const openMaps = () => {
     const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.delivery_address)}`;
     window.open(url, '_blank');
@@ -1159,28 +1417,45 @@ const OrderCard = React.memo(({ order, actions, isAdmin }: { order: Order, actio
             </p>
           </div>
         </div>
-        <div className="text-right shrink-0 ml-2">
-          <p className="text-lg font-black text-slate-800">€{order.price}</p>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            {order.type === 'city' ? 'Città' : `Extra (${order.distance}km)`}
-          </p>
-        </div>
+        {!hidePrice && (
+          <div className="text-right shrink-0 ml-2">
+            <p className="text-lg font-black text-slate-800">€{order.price}</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {order.type === 'city' ? 'Città' : `Extra (${order.distance}km)`}
+            </p>
+          </div>
+        )}
       </div>
 
+      {order.delivery_photo && (
+        <div className="mb-4 rounded-2xl overflow-hidden border border-slate-100">
+          <img src={order.delivery_photo} alt="Consegna" className="w-full h-48 object-cover" referrerPolicy="no-referrer" />
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+        <div className="bg-slate-50 p-3 rounded-2xl">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Orario</p>
+          <p className="font-bold text-slate-700 truncate flex items-center gap-1">
+            <Clock size={12} className="text-amber-500" />
+            {order.delivery_slot || '-'}
+          </p>
+        </div>
         <div className="bg-slate-50 p-3 rounded-2xl">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Citofono</p>
           <p className="font-bold text-slate-700 truncate">{order.intercom || '-'}</p>
         </div>
-        <div className="bg-slate-50 p-3 rounded-2xl">
+        <div className="bg-slate-50 p-3 rounded-2xl col-span-2">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Negozio</p>
-          <p className="font-bold text-slate-700 truncate">{order.merchant_name}</p>
-          <p className="text-[9px] text-slate-400 font-medium">{order.merchant_phone}</p>
+          <div className="flex justify-between items-center">
+            <p className="font-bold text-slate-700 truncate">{order.merchant_name}</p>
+            <p className="text-[9px] text-slate-400 font-medium">{order.merchant_phone}</p>
+          </div>
         </div>
       </div>
 
       <div className="flex gap-2">
-        {(order.status === 'pending' || order.status === 'assigned') && (
+        {showNavigation && (order.status === 'pending' || order.status === 'assigned') && (
           <button 
             onClick={openMaps}
             className="flex-1 bg-amber-50 text-amber-700 py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 active:bg-amber-100 transition-colors"

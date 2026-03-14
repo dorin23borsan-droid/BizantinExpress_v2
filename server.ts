@@ -41,9 +41,21 @@ db.exec(`
     price REAL,
     status TEXT DEFAULT 'pending', -- 'pending', 'assigned', 'completed'
     runner_id INTEGER,
+    delivery_photo TEXT, -- Base64 photo
+    delivery_slot TEXT, -- Selected time slot
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(merchant_id) REFERENCES users(id),
     FOREIGN KEY(runner_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT,
+    role TEXT,
+    content TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
 
@@ -51,11 +63,23 @@ db.exec(`
 const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
 if (userCount.count === 0) {
   const salt = bcrypt.genSaltSync(10);
-  const adminPass = bcrypt.hashSync("admin123", salt);
+  
+  // --- CAMBIA QUI LE CREDENZIALI ---
+  const ADMIN_USERNAME = "direzione"; 
+  const ADMIN_PASSWORD = "Amuitat230618270788?!"; // Password scelta dall'utente
+  // ---------------------------------
+
+  const adminPass = bcrypt.hashSync(ADMIN_PASSWORD, salt);
   const merchantPass = bcrypt.hashSync("merchant123", salt);
   const runnerPass = bcrypt.hashSync("runner123", salt);
-
-  db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run("admin", adminPass, "admin", "Amministratore");
+  
+  // Update or Insert admin
+  const existingAdmin = db.prepare("SELECT * FROM users WHERE username = ?").get(ADMIN_USERNAME);
+  if (existingAdmin) {
+    db.prepare("UPDATE users SET password = ? WHERE username = ?").run(adminPass, ADMIN_USERNAME);
+  } else {
+    db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run(ADMIN_USERNAME, adminPass, "admin", "Amministratore");
+  }
   db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run("merchant", merchantPass, "merchant", "Negozio Centro");
   db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run("runner", runnerPass, "runner", "Runner Marco");
 }
@@ -75,6 +99,35 @@ async function startServer() {
     cors: {
       origin: "*",
     },
+  });
+
+  io.on("connection", (socket) => {
+    console.log("User connected:", socket.id);
+
+    socket.on("send_message", (data) => {
+      const { user_id, username, role, content } = data;
+      try {
+        const stmt = db.prepare("INSERT INTO messages (user_id, username, role, content) VALUES (?, ?, ?, ?)");
+        const result = stmt.run(user_id, username, role, content);
+        
+        const newMessage = {
+          id: result.lastInsertRowid,
+          user_id,
+          username,
+          role,
+          content,
+          created_at: new Date().toISOString()
+        };
+        
+        io.emit("receive_message", newMessage);
+      } catch (error) {
+        console.error("Error saving message:", error);
+      }
+    });
+
+    socket.on("disconnect", () => {
+      console.log("User disconnected:", socket.id);
+    });
   });
 
   app.use(express.json());
@@ -135,6 +188,11 @@ async function startServer() {
     res.json(req.user);
   });
 
+  app.get("/api/messages", authenticateToken, (req: any, res) => {
+    const messages = db.prepare("SELECT * FROM messages ORDER BY created_at ASC LIMIT 100").all();
+    res.json(messages);
+  });
+
   // API Routes
   app.get("/api/orders", authenticateToken, (req: any, res) => {
     let orders;
@@ -153,11 +211,11 @@ async function startServer() {
       return res.status(403).json({ error: "Solo i negozianti possono creare ordini" });
     }
 
-    const { merchant_phone, delivery_address, recipient_name, intercom, type, distance, price } = req.body;
+    const { merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot } = req.body;
     const info = db.prepare(`
-      INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price);
+      INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot);
     
     const newOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(info.lastInsertRowid);
     
@@ -168,7 +226,7 @@ async function startServer() {
 
   app.patch("/api/orders/:id", authenticateToken, (req: any, res) => {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, delivery_photo } = req.body;
     
     const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as any;
     if (!order) return res.status(404).json({ error: "Ordine non trovato" });
@@ -177,7 +235,7 @@ async function startServer() {
       if (req.user.role !== 'runner' && req.user.role !== 'admin') {
         return res.status(403).json({ error: "Azione non consentita" });
       }
-      db.prepare("UPDATE orders SET status = ? WHERE id = ?").run(status, id);
+      db.prepare("UPDATE orders SET status = ?, delivery_photo = ? WHERE id = ?").run(status, delivery_photo || null, id);
       const updatedOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
       io.emit("order:completed", updatedOrder);
       res.json(updatedOrder);
