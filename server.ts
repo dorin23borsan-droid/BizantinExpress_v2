@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -61,6 +62,14 @@ if (userCount.count === 0) {
 
 async function startServer() {
   const app = express();
+  
+  // CORS configuration for Express
+  app.use(cors({
+    origin: "*", // In produzione potresti voler limitare gli origin
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+  }));
+
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: {
