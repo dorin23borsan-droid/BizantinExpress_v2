@@ -1,6 +1,6 @@
 // Configurazione per APK e Web
 // Se l'app viene compilata come APK, l'indirizzo deve essere quello del server remoto.
-const REMOTE_URL = "https://web-production-61f9d.up.railway.app"; 
+const REMOTE_URL = "https://web-production-8676a.up.railway.app"; 
 
 // Se siamo in un browser (non localhost), usiamo l'origine corrente. 
 // Se siamo su Android/iOS o localhost, usiamo l'URL remoto.
