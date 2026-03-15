@@ -217,6 +217,8 @@ export default function App() {
       return;
     }
 
+    let activeSocket: Socket | null = null;
+
     const init = async () => {
       const userData = await authFetch('/api/me');
       if (userData) {
@@ -227,6 +229,7 @@ export default function App() {
         const newSocket = io(SOCKET_URL, {
           auth: { token }
         });
+        activeSocket = newSocket;
         setSocket(newSocket);
 
         newSocket.on('order:new', (order: Order) => {
@@ -271,7 +274,7 @@ export default function App() {
     init();
 
     return () => {
-      if (socket) socket.disconnect();
+      if (activeSocket) activeSocket.disconnect();
     };
   }, [token]);
 

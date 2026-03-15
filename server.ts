@@ -121,7 +121,7 @@ async function startServer() {
 
   // Socket.io Auth Middleware
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
+    const token = socket.handshake.auth?.token;
     if (!token) return next(new Error("Authentication error"));
     
     jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
