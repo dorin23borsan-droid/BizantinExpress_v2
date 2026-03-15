@@ -130,10 +130,17 @@ export const OrderCard = React.memo(({ order, actions, isAdmin, hidePrice, showN
         <span>ID: #{order.id.toString().padStart(4, '0')}</span>
         <span>
           {(() => {
-            // Gestione formato SQLite (YYYY-MM-DD HH:MM:SS) vs ISO
-            const dateStr = order.created_at;
-            const normalizedDate = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
-            return new Date(normalizedDate).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+            try {
+              const dateStr = order.created_at;
+              if (!dateStr) return '--:--';
+              // Gestione formato SQLite (YYYY-MM-DD HH:MM:SS) vs ISO
+              const normalizedDate = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+              const d = new Date(normalizedDate);
+              if (isNaN(d.getTime())) return '--:--';
+              return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+              return '--:--';
+            }
           })()}
         </span>
       </div>

@@ -77,27 +77,23 @@ for (const migration of migrations) {
   }
 }
 
-// Seed default users if empty
-const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
-if (userCount.count === 0) {
-  const salt = bcrypt.genSaltSync(10);
-  
-  // --- CAMBIA QUI LE CREDENZIALI ---
-  const ADMIN_USERNAME = "direzione"; 
-  const ADMIN_PASSWORD = "Amuitat230618270788?!"; // Password scelta dall'utente
-  // ---------------------------------
+// Seed default users
+const salt = bcrypt.genSaltSync(10);
+const ADMIN_USERNAME = "direzione"; 
+const ADMIN_PASSWORD = "Amuitat230618270788?!";
+const adminPass = bcrypt.hashSync(ADMIN_PASSWORD, salt);
 
-  const adminPass = bcrypt.hashSync(ADMIN_PASSWORD, salt);
+const existingAdmin = db.prepare("SELECT * FROM users WHERE username = ?").get(ADMIN_USERNAME);
+if (existingAdmin) {
+  db.prepare("UPDATE users SET password = ? WHERE username = ?").run(adminPass, ADMIN_USERNAME);
+} else {
+  db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run(ADMIN_USERNAME, adminPass, "admin", "Amministratore");
+}
+
+const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
+if (userCount.count <= 1) { // Only admin exists
   const merchantPass = bcrypt.hashSync("merchant123", salt);
   const runnerPass = bcrypt.hashSync("runner123", salt);
-  
-  // Update or Insert admin
-  const existingAdmin = db.prepare("SELECT * FROM users WHERE username = ?").get(ADMIN_USERNAME);
-  if (existingAdmin) {
-    db.prepare("UPDATE users SET password = ? WHERE username = ?").run(adminPass, ADMIN_USERNAME);
-  } else {
-    db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run(ADMIN_USERNAME, adminPass, "admin", "Amministratore");
-  }
   db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run("merchant", merchantPass, "merchant", "Negozio Centro");
   db.prepare("INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)").run("runner", runnerPass, "runner", "Runner Marco");
 }
