@@ -13,7 +13,7 @@ export interface Order {
   distance: number;
   price: number;
   status: OrderStatus;
-  runner_id?: string;
+  runner_id?: number;
   delivery_photo?: string;
   delivery_slot?: string;
   delivery_date?: string;

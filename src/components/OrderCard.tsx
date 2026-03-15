@@ -80,7 +80,15 @@ export const OrderCard = React.memo(({ order, actions, isAdmin, hidePrice, showN
             </p>
             {order.delivery_date && (
               <p className="text-[10px] font-bold text-slate-500 ml-4">
-                {new Date(order.delivery_date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                {(() => {
+                  try {
+                    const d = new Date(order.delivery_date);
+                    if (isNaN(d.getTime())) return order.delivery_date;
+                    return d.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  } catch (e) {
+                    return order.delivery_date;
+                  }
+                })()}
               </p>
             )}
           </div>

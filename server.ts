@@ -119,6 +119,18 @@ async function startServer() {
     },
   });
 
+  // Socket.io Auth Middleware
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    if (!token) return next(new Error("Authentication error"));
+    
+    jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
+      if (err) return next(new Error("Authentication error"));
+      (socket as any).user = user;
+      next();
+    });
+  });
+
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
@@ -261,25 +273,32 @@ async function startServer() {
     const { id } = req.params;
     const { status, delivery_photo } = req.body;
     
-    const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as any;
-    if (!order) return res.status(404).json({ error: "Ordine non trovato" });
+    try {
+      const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as any;
+      if (!order) return res.status(404).json({ error: "Ordine non trovato" });
 
-    if (status === 'completed') {
-      if (req.user.role !== 'runner' && req.user.role !== 'admin') {
-        return res.status(403).json({ error: "Azione non consentita" });
+      if (status === 'completed') {
+        if (req.user.role !== 'runner' && req.user.role !== 'admin') {
+          return res.status(403).json({ error: "Azione non consentita" });
+        }
+        db.prepare("UPDATE orders SET status = ?, delivery_photo = ? WHERE id = ?").run(status, delivery_photo || null, id);
+        const updatedOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+        io.emit("order:completed", updatedOrder);
+        res.json(updatedOrder);
+      } else if (status === 'assigned') {
+        if (req.user.role !== 'runner' && req.user.role !== 'admin') {
+          return res.status(403).json({ error: "Azione non consentita" });
+        }
+        db.prepare("UPDATE orders SET status = ?, runner_id = ? WHERE id = ?").run(status, req.user.id, id);
+        const updatedOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
+        io.emit("order:updated", updatedOrder);
+        res.json(updatedOrder);
+      } else {
+        res.status(400).json({ error: "Stato non valido" });
       }
-      db.prepare("UPDATE orders SET status = ?, delivery_photo = ? WHERE id = ?").run(status, delivery_photo || null, id);
-      const updatedOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
-      io.emit("order:completed", updatedOrder);
-      res.json(updatedOrder);
-    } else if (status === 'assigned') {
-      if (req.user.role !== 'runner' && req.user.role !== 'admin') {
-        return res.status(403).json({ error: "Azione non consentita" });
-      }
-      db.prepare("UPDATE orders SET status = ?, runner_id = ? WHERE id = ?").run(status, req.user.id, id);
-      const updatedOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(id);
-      io.emit("order:updated", updatedOrder);
-      res.json(updatedOrder);
+    } catch (error: any) {
+      console.error("Error updating order:", error);
+      res.status(500).json({ error: "Errore durante l'aggiornamento dell'ordine: " + error.message });
     }
   });
 
