@@ -43,6 +43,7 @@ db.exec(`
     runner_id INTEGER,
     delivery_photo TEXT, -- Base64 photo
     delivery_slot TEXT, -- Selected time slot
+    delivery_date TEXT, -- Selected date
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(merchant_id) REFERENCES users(id),
     FOREIGN KEY(runner_id) REFERENCES users(id)
@@ -58,6 +59,13 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
+
+// Migration: Add delivery_date to orders if it doesn't exist
+try {
+  db.prepare("ALTER TABLE orders ADD COLUMN delivery_date TEXT").run();
+} catch (e) {
+  // Column already exists or table doesn't exist yet
+}
 
 // Seed default users if empty
 const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
@@ -211,11 +219,11 @@ async function startServer() {
       return res.status(403).json({ error: "Solo i negozianti possono creare ordini" });
     }
 
-    const { merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot } = req.body;
+    const { merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date } = req.body;
     const info = db.prepare(`
-      INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot);
+      INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date);
     
     const newOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(info.lastInsertRowid);
     
