@@ -44,7 +44,7 @@ db.exec(`
     delivery_photo TEXT, -- Base64 photo
     delivery_slot TEXT, -- Selected time slot
     delivery_date TEXT, -- Selected date
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     FOREIGN KEY(merchant_id) REFERENCES users(id),
     FOREIGN KEY(runner_id) REFERENCES users(id)
   );
@@ -55,16 +55,26 @@ db.exec(`
     username TEXT,
     role TEXT,
     content TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 `);
 
-// Migration: Add delivery_date to orders if it doesn't exist
-try {
-  db.prepare("ALTER TABLE orders ADD COLUMN delivery_date TEXT").run();
-} catch (e) {
-  // Column already exists or table doesn't exist yet
+// Migrations: Ensure all columns exist
+const migrations = [
+  "ALTER TABLE orders ADD COLUMN delivery_date TEXT",
+  "ALTER TABLE orders ADD COLUMN delivery_slot TEXT",
+  "ALTER TABLE orders ADD COLUMN merchant_name TEXT",
+  "ALTER TABLE orders ADD COLUMN merchant_phone TEXT",
+  "ALTER TABLE orders ADD COLUMN delivery_photo TEXT"
+];
+
+for (const migration of migrations) {
+  try {
+    db.prepare(migration).run();
+  } catch (e) {
+    // Column already exists or table doesn't exist yet
+  }
 }
 
 // Seed default users if empty
@@ -133,12 +143,22 @@ async function startServer() {
       }
     });
 
+    socket.on("update_location", (data: { lat: number, lng: number, orderId?: number }) => {
+      // Broadcast location to admin and relevant merchant
+      io.emit("location_updated", {
+        userId: (socket as any).user.id,
+        userName: (socket as any).user.name,
+        ...data
+      });
+    });
+
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.id);
     });
   });
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Auth Middleware
   const authenticateToken = (req: any, res: any, next: any) => {
@@ -220,16 +240,21 @@ async function startServer() {
     }
 
     const { merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date } = req.body;
-    const info = db.prepare(`
-      INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date);
-    
-    const newOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(info.lastInsertRowid);
-    
-    // Notify Runner and Admin
-    io.emit("order:new", newOrder);
-    res.json(newOrder);
+    try {
+      const info = db.prepare(`
+        INSERT INTO orders (merchant_id, merchant_name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(req.user.id, req.user.name, merchant_phone, delivery_address, recipient_name, intercom, type, distance, price, delivery_slot, delivery_date);
+      
+      const newOrder = db.prepare("SELECT * FROM orders WHERE id = ?").get(info.lastInsertRowid);
+      
+      // Notify Runner and Admin
+      io.emit("order:new", newOrder);
+      res.json(newOrder);
+    } catch (dbError: any) {
+      console.error("Database error creating order:", dbError);
+      res.status(500).json({ error: "Errore nel database durante la creazione dell'ordine: " + dbError.message });
+    }
   });
 
   app.patch("/api/orders/:id", authenticateToken, (req: any, res) => {

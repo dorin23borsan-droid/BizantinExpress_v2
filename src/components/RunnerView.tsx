@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Camera, Clock, Package } from 'lucide-react';
+import { Camera, Clock, Package, MapPin } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { OrderCard } from './OrderCard';
+import { useGeolocation } from '../hooks/useGeolocation';
+import { Socket } from 'socket.io-client';
 
 interface RunnerViewProps {
   orders: Order[];
@@ -10,24 +12,41 @@ interface RunnerViewProps {
   runnerId: number;
   view: 'active' | 'history';
   onUpdateStatusWithPhoto: (id: number, status: OrderStatus, photo: string) => void;
+  socket: Socket | null;
 }
 
-export function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateStatusWithPhoto }: RunnerViewProps) {
+export function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateStatusWithPhoto, socket }: RunnerViewProps) {
   const availableOrders = orders.filter(o => o.status === 'pending');
   const myActiveOrders = orders.filter(o => o.status === 'assigned' && String(o.runner_id) === String(runnerId));
   const myHistoryOrders = orders.filter(o => o.status === 'completed' && String(o.runner_id) === String(runnerId));
 
-  const [capturingPhotoFor, setCapturingPhotoFor] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { location, error: geoError } = useGeolocation(myActiveOrders.length > 0);
 
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>, orderId: number) => {
+  useEffect(() => {
+    if (location && socket && myActiveOrders.length > 0) {
+      socket.emit('update_location', {
+        lat: location.lat,
+        lng: location.lng,
+        orderId: myActiveOrders[0].id // Tracking the first active order
+      });
+    }
+  }, [location, socket, myActiveOrders.length]);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const capturingOrderIdRef = useRef<number | null>(null);
+
+  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    const orderId = capturingOrderIdRef.current;
+    
+    if (file && orderId) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64String = reader.result as string;
         onUpdateStatusWithPhoto(orderId, 'completed', base64String);
-        setCapturingPhotoFor(null);
+        capturingOrderIdRef.current = null;
+        // Reset input value to allow picking the same file again if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
       };
       reader.readAsDataURL(file);
     }
@@ -46,7 +65,7 @@ export function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateSta
         capture="environment" 
         className="hidden" 
         ref={fileInputRef}
-        onChange={(e) => capturingPhotoFor && handlePhotoCapture(e, capturingPhotoFor)}
+        onChange={handlePhotoCapture}
       />
 
       <div className="flex items-center justify-between">
@@ -58,7 +77,20 @@ export function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateSta
             {view === 'active' ? 'Trova e completa le tue consegne' : 'Le tue consegne completate'}
           </p>
         </div>
+        {myActiveOrders.length > 0 && (
+          <div className="flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">GPS Attivo</span>
+          </div>
+        )}
       </div>
+
+      {geoError && (
+        <div className="bg-red-50 p-4 rounded-2xl border border-red-100 flex items-center gap-3">
+          <MapPin size={20} className="text-red-500" />
+          <p className="text-xs font-bold text-red-800">Errore GPS: {geoError}. Assicurati di aver concesso i permessi di posizione.</p>
+        </div>
+      )}
 
       {view === 'active' ? (
         <>
@@ -75,7 +107,7 @@ export function RunnerView({ orders, onUpdateStatus, runnerId, view, onUpdateSta
                     <div className="flex flex-col gap-2">
                       <button 
                         onClick={() => {
-                          setCapturingPhotoFor(order.id);
+                          capturingOrderIdRef.current = order.id;
                           fileInputRef.current?.click();
                         }}
                         className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-100"

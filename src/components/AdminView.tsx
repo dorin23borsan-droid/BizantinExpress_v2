@@ -1,17 +1,62 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Package, History, Info } from 'lucide-react';
+import { Package, History, Info, Map as MapIcon, User } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { OrderCard } from './OrderCard';
+import { Socket } from 'socket.io-client';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+// Fix for Leaflet default icon issue in React
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+interface RunnerLocation {
+  userId: number;
+  userName: string;
+  lat: number;
+  lng: number;
+  orderId?: number;
+  lastUpdate: number;
+}
 
 interface AdminViewProps {
   orders: Order[];
   onUpdateStatus: (id: number, status: OrderStatus) => void;
   onDeleteOrder: (id: number) => void;
   view: 'active' | 'history';
+  socket: Socket | null;
 }
 
-export function AdminView({ orders, onUpdateStatus, onDeleteOrder, view }: AdminViewProps) {
+export function AdminView({ orders, onUpdateStatus, onDeleteOrder, view, socket }: AdminViewProps) {
+  const [runnerLocations, setRunnerLocations] = useState<Record<number, RunnerLocation>>({});
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleLocationUpdate = (data: RunnerLocation) => {
+      setRunnerLocations(prev => ({
+        ...prev,
+        [data.userId]: { ...data, lastUpdate: Date.now() }
+      }));
+    };
+
+    socket.on('location_updated', handleLocationUpdate);
+    return () => {
+      socket.off('location_updated', handleLocationUpdate);
+    };
+  }, [socket]);
+
+  const activeRunners = (Object.values(runnerLocations) as RunnerLocation[]).filter(
+    loc => Date.now() - loc.lastUpdate < 60000 // Only show runners active in the last minute
+  );
+
   const stats = useMemo(() => ({
     total: orders.length,
     pending: orders.filter(o => o.status !== 'completed').length,
@@ -47,6 +92,39 @@ export function AdminView({ orders, onUpdateStatus, onDeleteOrder, view }: Admin
           </div>
         </div>
       </div>
+
+      {activeRunners.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Mappa Runner Attivi</h3>
+            <MapIcon size={16} className="text-emerald-500" />
+          </div>
+          <div className="h-64 bg-slate-100 rounded-3xl overflow-hidden border border-slate-200 relative z-0">
+            <MapContainer 
+              center={[44.4184, 12.2035]} // Ravenna center
+              zoom={13} 
+              style={{ height: '100%', width: '100%' }}
+              scrollWheelZoom={false}
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              />
+              {activeRunners.map(runner => (
+                <Marker key={runner.userId} position={[runner.lat, runner.lng]}>
+                  <Popup>
+                    <div className="p-1">
+                      <p className="font-bold text-slate-800">{runner.userName}</p>
+                      <p className="text-[10px] text-slate-500">Runner ID: {runner.userId}</p>
+                      {runner.orderId && <p className="text-[10px] text-amber-600 font-bold">Ordine #{runner.orderId}</p>}
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">

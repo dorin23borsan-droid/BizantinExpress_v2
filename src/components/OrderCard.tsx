@@ -26,7 +26,8 @@ interface OrderCardProps {
 
 export const OrderCard = React.memo(({ order, actions, isAdmin, hidePrice, showNavigation }: OrderCardProps) => {
   const openMaps = () => {
-    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.delivery_address)}`;
+    // Usiamo l'API 'dir' (directions) per avviare la navigazione dal punto GPS attuale
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.delivery_address)}&travelmode=driving`;
     window.open(url, '_blank');
   };
 
@@ -119,7 +120,14 @@ export const OrderCard = React.memo(({ order, actions, isAdmin, hidePrice, showN
       
       <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">
         <span>ID: #{order.id.toString().padStart(4, '0')}</span>
-        <span>{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        <span>
+          {(() => {
+            // Gestione formato SQLite (YYYY-MM-DD HH:MM:SS) vs ISO
+            const dateStr = order.created_at;
+            const normalizedDate = dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+            return new Date(normalizedDate).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+          })()}
+        </span>
       </div>
     </motion.div>
   );

@@ -190,10 +190,18 @@ export default function App() {
         return null;
       }
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        if (!res.ok) throw new Error(`Errore ${res.status}: ${text || 'Risposta non valida dal server'}`);
+        return text;
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || `Errore ${res.status}: Operazione fallita`);
+        throw new Error(data?.error || `Errore ${res.status}: Operazione fallita`);
       }
 
       return data;
@@ -450,7 +458,13 @@ export default function App() {
               <MerchantView orders={orders} onCreateOrder={handleCreateOrder} view={view} />
             )}
             {user.role === 'runner' && (
-              <RunnerView orders={orders} onUpdateStatus={handleUpdateStatus} runnerId={user.id} view={view} onUpdateStatusWithPhoto={(id, status, photo) => {
+              <RunnerView 
+                orders={orders} 
+                onUpdateStatus={handleUpdateStatus} 
+                runnerId={user.id} 
+                view={view} 
+                socket={socket}
+                onUpdateStatusWithPhoto={(id, status, photo) => {
                 authFetch(`/api/orders/${id}`, {
                   method: 'PATCH',
                   body: JSON.stringify({ status, delivery_photo: photo }),
@@ -463,7 +477,13 @@ export default function App() {
               }} />
             )}
             {user.role === 'admin' && (
-              <AdminView orders={orders} onUpdateStatus={handleUpdateStatus} onDeleteOrder={handleDeleteOrder} view={view} />
+              <AdminView 
+                orders={orders} 
+                onUpdateStatus={handleUpdateStatus} 
+                onDeleteOrder={handleDeleteOrder} 
+                view={view} 
+                socket={socket}
+              />
             )}
           </AnimatePresence>
         </div>

@@ -1,0 +1,48 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sfondo Arrotondato -->
+  <rect width="512" height="512" rx="100" fill="#0f172a"/>
+  
+  <!-- Griglia Mosaico -->
+  <clipPath id="clip">
+    <rect width="512" height="512" rx="100" />
+  </clipPath>
+  
+  <g clip-path="url(#clip)">
+    <!-- Riga 0 -->
+    <rect x="0" y="0" width="102.4" height="102.4" fill="#1e3a8a"/>
+    <rect x="102.4" y="0" width="102.4" height="102.4" fill="#064e3b"/>
+    <rect x="204.8" y="0" width="102.4" height="102.4" fill="#1d4ed8"/>
+    <rect x="307.2" y="0" width="102.4" height="102.4" fill="#1e3a8a"/>
+    <rect x="409.6" y="0" width="102.4" height="102.4" fill="#064e3b"/>
+    <!-- Riga 1 -->
+    <rect x="0" y="102.4" width="102.4" height="102.4" fill="#f59e0b"/>
+    <rect x="102.4" y="102.4" width="102.4" height="102.4" fill="#b91c1c"/>
+    <rect x="204.8" y="102.4" width="102.4" height="102.4" fill="#e2e8f0"/>
+    <rect x="307.2" y="102.4" width="102.4" height="102.4" fill="#fbbf24"/>
+    <rect x="409.6" y="102.4" width="102.4" height="102.4" fill="#1d4ed8"/>
+    <!-- Riga 2 -->
+    <rect x="0" y="204.8" width="102.4" height="102.4" fill="#059669"/>
+    <rect x="102.4" y="204.8" width="102.4" height="102.4" fill="#1e3a8a"/>
+    <rect x="204.8" y="204.8" width="102.4" height="102.4" fill="#b91c1c"/>
+    <rect x="307.2" y="204.8" width="102.4" height="102.4" fill="#064e3b"/>
+    <rect x="409.6" y="204.8" width="102.4" height="102.4" fill="#f59e0b"/>
+    <!-- Riga 3 -->
+    <rect x="0" y="307.2" width="102.4" height="102.4" fill="#e2e8f0"/>
+    <rect x="102.4" y="307.2" width="102.4" height="102.4" fill="#fbbf24"/>
+    <rect x="204.8" y="307.2" width="102.4" height="102.4" fill="#1d4ed8"/>
+    <rect x="307.2" y="307.2" width="102.4" height="102.4" fill="#059669"/>
+    <rect x="409.6" y="307.2" width="102.4" height="102.4" fill="#1e3a8a"/>
+    <!-- Riga 4 -->
+    <rect x="0" y="409.6" width="102.4" height="102.4" fill="#b91c1c"/>
+    <rect x="102.4" y="409.6" width="102.4" height="102.4" fill="#064e3b"/>
+    <rect x="204.8" y="409.6" width="102.4" height="102.4" fill="#f59e0b"/>
+    <rect x="307.2" y="409.6" width="102.4" height="102.4" fill="#e2e8f0"/>
+    <rect x="409.6" y="409.6" width="102.4" height="102.4" fill="#059669"/>
+    
+    <!-- Overlay scuro per leggibilità -->
+    <rect width="512" height="512" fill="#000000" fill-opacity="0.3"/>
+  </g>
+
+  <!-- Testo BX -->
+  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="200" fill="white" style="filter: drop-shadow(0px 8px 4px rgba(0,0,0,0.5))">BX</text>
+</svg>
